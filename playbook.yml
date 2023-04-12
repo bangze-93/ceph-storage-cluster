@@ -1,0 +1,130 @@
+---
+- name: Ceph Cluster Quincy
+  hosts: all
+  become: true
+  become_method: sudo
+  vars:
+    - mon1_ip: 192.168.200.41
+    - mon2_ip: 192.168.200.42
+    - mon3_ip: 192.168.200.43
+    - osd1_ip: 192.168.200.44
+    - osd2_ip: 192.168.200.45
+    - osd3_ip: 192.168.200.46
+  tasks:
+    - name: Update and upgrade apt packages
+      ansible.builtin.apt:
+        upgrade: 'yes'
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+
+    - name: Set timezone
+      ansible.builtin.timezone:
+        name: Asia/Jakarta
+
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: 0755
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        keyring: /etc/apt/keyrings/docker.gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+        state: present
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - chrony
+        state: present
+        update_cache: true
+      notify: Restart docker and chrony
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Update /etc/hosts file
+      ansible.builtin.template:
+        src: etc-hosts
+        dest: /etc/hosts
+        mode: 0644
+
+    - name: Create ceph directory
+      ansible.builtin.file:
+        path: /etc/ceph
+        state: directory
+        mode: 0644
+      when: inventory_hostname == 'Mon01'
+
+    - name: Download cephadm
+      ansible.builtin.get_url:
+        url: https://github.com/ceph/ceph/raw/quincy/src/cephadm/cephadm
+        dest: /usr/bin/cephadm
+        mode: a+x
+      when: inventory_hostname == 'Mon01'
+
+    - name: Bootstrap ceph cluster
+      ansible.builtin.command: cephadm bootstrap --mon-ip {{ mon1_ip }} --initial-dashboard-user admin --initial-dashboard-password P@ssw0rd
+      register: bootstrap
+      when: inventory_hostname == 'Mon01'
+
+    - name: Show output bootstrap
+      ansible.builtin.debug:
+        var: bootstrap.stdout
+      when: inventory_hostname == 'Mon01'
+
+    - name: Install ceph tool
+      ansible.builtin.shell: |
+        cephadm add-repo --release quincy
+        cephadm install ceph-common
+      when: inventory_hostname == 'Mon01'
+
+    - name: Copy authorized_keys to control node
+      ansible.builtin.fetch:
+        src: ~/.ssh/authorized_keys
+        dest: "{{ playbook_dir }}/files/"
+        flat: true
+      when: inventory_hostname == 'Mon01'
+
+    - name: Copy authorized_keys
+      ansible.builtin.copy:
+        src: authorized_keys
+        dest: ~/.ssh/authorized_keys
+        mode: 0600
+      when: inventory_hostname != 'Mon01'
+
+    - name: Sleep for 1 minutes
+      ansible.builtin.wait_for:
+        timeout: 60
+
+    - name: Add and label node
+      shell: |
+        ceph orch host add ceph-mon1 --labels mon
+        ceph orch host add ceph-mon2 --labels mon
+        ceph orch host add ceph-mon3 --labels mon
+        ceph orch host add ceph-osd1 --labels osd
+        ceph orch host add ceph-osd2 --labels osd
+        ceph orch host add ceph-osd3 --labels osd
+      when: inventory_hostname == 'Mon01'
+
+  handlers:
+    - name: Restart docker and chrony
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop:
+        - docker
+        - chrony
+...
