@@ -90,7 +90,7 @@
         cephadm install ceph-common
       when: inventory_hostname == 'Mon01'
 
-    - name: Copy authorized_keys to control node
+    - name: Get authorized_keys
       ansible.builtin.fetch:
         src: ~/.ssh/authorized_keys
         dest: "{{ playbook_dir }}/files/"
