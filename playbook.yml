@@ -104,9 +104,9 @@
         mode: 0600
       when: inventory_hostname != 'Mon01'
 
-    - name: Sleep for 1 minutes
+    - name: Sleep for 30 seconds
       ansible.builtin.wait_for:
-        timeout: 60
+        timeout: 30
 
     - name: Add and label node
       shell: |
