@@ -1,4 +1,4 @@
-## Deploy Ceph cluster with Ansible on Ubuntu 20
+## Deploy Ceph Storage Cluster with Ansible on Ubuntu 20
 Adjust the IP's in playbook.yml with your env    
 ```
   vars:
